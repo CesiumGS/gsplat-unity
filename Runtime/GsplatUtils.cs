@@ -9,7 +9,22 @@ namespace Gsplat
 {
     public static class GsplatUtils
     {
-        public const string k_PackagePath = "Packages/wu.yize.gsplat/";
+#if UNITY_EDITOR
+        public static string PackagePath
+        {
+            get
+            {
+                // Resolve this script's stable GUID so embedded and relocated installs work too.
+                var scriptPath = UnityEditor.AssetDatabase.GUIDToAssetPath("a650d35c9ca7411ab77aef30fffc11b3");
+                const string relativePath = "Runtime/GsplatUtils.cs";
+                if (!scriptPath.EndsWith(relativePath, StringComparison.Ordinal))
+                    throw new InvalidOperationException("Could not locate the gsplat-unity package. " +
+                                                        "Ensure GsplatUtils.cs and its original .meta file are present.");
+
+                return scriptPath.Substring(0, scriptPath.Length - relativePath.Length);
+            }
+        }
+#endif
         public static readonly Version k_Version = new("1.4.0");
 
         internal static ulong GetObjectId(UnityEngine.Object obj)

@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Fixed default shader and material loading when the package is embedded or installed at a nonstandard path.
 - Fixed a bug in `GsplatImporterEditor` where if the user selected one `.spz` file and then one `.ply` file, it would show `.ply` only options to the user. ([#43](https://github.com/wuyize25/gsplat-unity/pull/43) by [@amheuer](https://github.com/amheuer))
 
 ## [1.4.0] - 2026-07-26

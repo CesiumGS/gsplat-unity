@@ -108,10 +108,10 @@ namespace Gsplat
 
 #if UNITY_EDITOR
         static ComputeShader DefaultComputeShader => AssetDatabase.LoadAssetAtPath<ComputeShader>(
-            GsplatUtils.k_PackagePath + "Runtime/Shaders/Gsplat.compute");
+            GsplatUtils.PackagePath + "Runtime/Shaders/Gsplat.compute");
 
         static GsplatGlobalMaterial DefaultGlobalMaterial => AssetDatabase.LoadAssetAtPath<GsplatGlobalMaterial>(
-            GsplatUtils.k_PackagePath + "Runtime/Materials/GsplatGlobal.asset");
+            GsplatUtils.PackagePath + "Runtime/Materials/GsplatGlobal.asset");
 
         static GsplatMaterial[] DefaultMaterials
         {
@@ -119,10 +119,10 @@ namespace Gsplat
             {
                 var materials = new GsplatMaterial[Enum.GetValues(typeof(CompressionMode)).Length];
                 materials[(int)CompressionMode.Uncompressed] =
-                    AssetDatabase.LoadAssetAtPath<GsplatMaterial>(GsplatUtils.k_PackagePath +
+                    AssetDatabase.LoadAssetAtPath<GsplatMaterial>(GsplatUtils.PackagePath +
                                                                   "Runtime/Materials/GsplatUncompressed.asset");
                 materials[(int)CompressionMode.Spark] =
-                    AssetDatabase.LoadAssetAtPath<GsplatMaterial>(GsplatUtils.k_PackagePath +
+                    AssetDatabase.LoadAssetAtPath<GsplatMaterial>(GsplatUtils.PackagePath +
                                                                   "Runtime/Materials/GsplatSpark.asset");
                 return materials;
             }
