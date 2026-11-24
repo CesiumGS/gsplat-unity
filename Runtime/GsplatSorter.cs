@@ -19,6 +19,9 @@ namespace Gsplat
         public bool ComputeSortRequired { get; }
         public void ComputeDepth(CommandBuffer cmd, Matrix4x4 matrixMv);
 
+        // Issues this renderer's own draw. Called by GsplatSorter when the global merge is not used this frame.
+        public void RenderIndividually();
+
         // Used by GsplatSorter to populate the global packed buffer.
         public GsplatResource GsplatResource { get; }
         public uint SplatCount { get; }
@@ -235,18 +238,26 @@ namespace Gsplat
                 m_globalRenderer.DispatchMerge(cmd, m_activeGsplats);
         }
 
-        // Called by GsplatPlayerLoopHook once per frame, before Unity's PostLateUpdate phase
+        // Called by GsplatPlayerLoopHook once per frame, before Unity's PostLateUpdate phase (i.e. after every
+        // renderer's Update). Decides global vs. per-renderer drawing and issues the draws in the same place, so
+        // the decision and the draws always agree within a frame.
         public void Update()
         {
-            GlobalRenderEnabled = m_globalRenderer.Valid && GsplatSettings.Instance.EnableGlobalSort &&
-                                  m_activeGsplats.Count >= 2;
-            if (!GlobalRenderEnabled) return;
             m_activeGsplats.Clear();
             foreach (var gs in m_gsplats.Where(gs => gs is { isActiveAndEnabled: true, Valid: true }))
                 m_activeGsplats.Add(gs);
-            GlobalRenderEnabled = GlobalRenderEnabled && CanRenderGlobally();
-            if (!GlobalRenderEnabled) return;
-            m_globalRenderer.Update(m_activeGsplats);
+
+            GlobalRenderEnabled = m_globalRenderer.Valid && GsplatSettings.Instance.EnableGlobalSort &&
+                                  m_activeGsplats.Count >= 2 && CanRenderGlobally();
+
+            if (GlobalRenderEnabled)
+            {
+                m_globalRenderer.Update(m_activeGsplats);
+                return;
+            }
+
+            foreach (var gs in m_activeGsplats)
+                gs.RenderIndividually();
         }
 
         public ISorterResource CreateSorterResource(uint count, GraphicsBuffer orderBuffer)

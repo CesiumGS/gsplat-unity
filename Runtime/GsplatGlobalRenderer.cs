@@ -49,11 +49,13 @@ namespace Gsplat
 
         // Scratch buffers for merge passes.
         // m_packScratch*  : all renderers' orders+depths packed and concatenated.
-        // m_mergeScratch* : ping-pong pair for cascaded intermediate merges.
+        // m_mergeScratch*, m_mergeScratch2* : ping-pong pair for cascaded intermediate merges.
         GraphicsBuffer m_packScratchOrders;
         GraphicsBuffer m_packScratchDepths;
         GraphicsBuffer m_mergeScratchOrders;
         GraphicsBuffer m_mergeScratchDepths;
+        GraphicsBuffer m_mergeScratch2Orders;
+        GraphicsBuffer m_mergeScratch2Depths;
         Matrix4x4[] m_rendererTransformsCache;
         RendererParams[] m_rendererParamsCache;
         MaterialPropertyBlock m_globalPropertyBlock;
@@ -156,6 +158,14 @@ namespace Gsplat
         {
             EnsureGlobalBuffers(activeGsplats);
             if (m_totalSplatCount == 0) return;
+
+            // The draw is queued now but the merge that fills GlobalOrderBuffer runs later, during camera
+            // rendering. Size the draw from this frame's RemainingCounts (the same values the merge will use)
+            // rather than the previous frame's merge result, which is stale whenever the renderer set changes.
+            m_totalRemainingCount = 0;
+            foreach (var gs in activeGsplats)
+                m_totalRemainingCount += gs.RemainingCount;
+
             UpdateRendererTransforms(activeGsplats);
             UpdateRendererParams(activeGsplats);
             Render();
@@ -273,6 +283,10 @@ namespace Gsplat
                 { name = "Gsplat.MergeScratchOrders" };
             m_mergeScratchDepths = new GraphicsBuffer(st, (int)m_totalSplatCount, sizeof(float))
                 { name = "Gsplat.MergeScratchDepths" };
+            m_mergeScratch2Orders = new GraphicsBuffer(st, (int)m_totalSplatCount, sizeof(uint))
+                { name = "Gsplat.MergeScratch2Orders" };
+            m_mergeScratch2Depths = new GraphicsBuffer(st, (int)m_totalSplatCount, sizeof(float))
+                { name = "Gsplat.MergeScratch2Depths" };
         }
 
         // True when an active renderer's SplatCount no longer matches what the global buffers were
@@ -388,17 +402,17 @@ namespace Gsplat
             }
 
             // Step 2: cascaded 2-way merges.
-            // After each pass the merged sub-range grows. We alternate writing between
-            // m_packScratch (treated as read-only source) and m_mergeScratch.
-            // Source for renderer k's sorted range is always m_packScratchOrders[off[k]..off[k]+cnt[k]).
-            // The merged-so-far result alternates between m_mergeScratch and a temporary swap.
+            // Source B (renderer k's sorted range) is always m_packScratch[off[k]..off[k]+cnt[k]), so m_packScratch
+            // must never be written here: a merge output [0, mergedCount + cnt[k]) overlaps B's range, and writing it
+            // in the same dispatch that reads B is a GPU data race (duplicated/dropped splats, flickering).
+            // The merged-so-far result starts in m_packScratch (renderer 0's range) and then ping-pongs between
+            // m_mergeScratch and m_mergeScratch2.
 
             uint mergedCount = activeGsplats[0].RemainingCount; // size of merged result so far
             uint mergedOffset = 0; // always at start of its scratch buffer
 
-            // Current merged result lives in: packScratch initially (range [0, mergedCount)).
-            // We swap between packScratch and mergeScratch each pass.
-            bool mergedInPack = true;
+            GraphicsBuffer mergedOrders = m_packScratchOrders;
+            GraphicsBuffer mergedDepths = m_packScratchDepths;
 
             for (int k = 1; k < K; k++)
             {
@@ -409,15 +423,14 @@ namespace Gsplat
                 uint total = mergedCount + cntK;
 
                 // Source A: current merged result.
-                var srcAOrders = mergedInPack ? m_packScratchOrders : m_mergeScratchOrders;
-                var srcADepths = mergedInPack ? m_packScratchDepths : m_mergeScratchDepths;
+                var srcAOrders = mergedOrders;
+                var srcADepths = mergedDepths;
 
                 // Source B: renderer k's range in packScratch.
-                // (always in packScratch regardless of which buffer holds merged result)
                 var srcBOrders = m_packScratchOrders;
                 var srcBDepths = m_packScratchDepths;
 
-                // Destination: final pass → globalOrderBuffer; otherwise the other scratch.
+                // Destination: final pass → globalOrderBuffer; otherwise whichever merge scratch isn't source A.
                 GraphicsBuffer dstOrders, dstDepths;
                 if (isFinal)
                 {
@@ -426,8 +439,9 @@ namespace Gsplat
                 }
                 else
                 {
-                    dstOrders = mergedInPack ? m_mergeScratchOrders : m_packScratchOrders;
-                    dstDepths = mergedInPack ? m_mergeScratchDepths : m_packScratchDepths;
+                    bool aInFirst = mergedOrders == m_mergeScratchOrders;
+                    dstOrders = aInFirst ? m_mergeScratch2Orders : m_mergeScratchOrders;
+                    dstDepths = aInFirst ? m_mergeScratch2Depths : m_mergeScratchDepths;
                 }
 
                 int kernel = isFinal ? m_kernelMergeTwo : m_kernelMergeTwoWithDepth;
@@ -450,7 +464,8 @@ namespace Gsplat
 
                 mergedCount = total;
                 mergedOffset = 0; // output always starts at 0 in the destination buffer
-                mergedInPack = !mergedInPack;
+                mergedOrders = dstOrders;
+                mergedDepths = dstDepths;
             }
 
             m_totalRemainingCount = mergedCount;
@@ -533,8 +548,14 @@ namespace Gsplat
             m_mergeScratchOrders = null;
             m_mergeScratchDepths?.Dispose();
             m_mergeScratchDepths = null;
+            m_mergeScratch2Orders?.Dispose();
+            m_mergeScratch2Orders = null;
+            m_mergeScratch2Depths?.Dispose();
+            m_mergeScratch2Depths = null;
             // Drop the build snapshot so the next EnsureGlobalBuffers re-captures counts from scratch.
             m_builtSplatCounts = null;
+            m_totalSplatCount = 0;
+            m_totalRemainingCount = 0;
         }
     }
 }

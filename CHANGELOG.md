@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Fixed flickering with `Enable Global Sort` when three or more renderers are active. The cascaded K-way merge wrote intermediate results into the same scratch buffer range it was reading the next renderer's sorted splats from, a GPU data race that duplicated and dropped splats. Intermediate merges now ping-pong between two dedicated scratch buffers.
+- Fixed flickering with `Enable Global Sort` when the set of active renderers changes. The merged draw was sized from the previous frame's splat count, and per-renderer draws used the previous frame's global-sort decision, which could skip or double-draw splats for a frame.
 - Fixed default shader and material loading when the package is embedded or installed at a nonstandard path.
 - Fixed a bug in `GsplatImporterEditor` where if the user selected one `.spz` file and then one `.ply` file, it would show `.ply` only options to the user. ([#43](https://github.com/wuyize25/gsplat-unity/pull/43) by [@amheuer](https://github.com/amheuer))
 
